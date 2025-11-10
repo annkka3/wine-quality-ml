@@ -1,0 +1,23 @@
+models:
+  random_forest:
+    n_estimators: 100
+    max_depth: 8
+    random_state: 42
+    grid_search:
+      n_estimators: [100, 150, 200]
+      max_depth: [6, 8, 10, None]
+      min_samples_split: [2, 5, 10]
+  gbrt:
+    n_estimators: 300
+    learning_rate: 0.05
+    max_depth: 3
+    random_state: 42
+    grid_search:
+      n_estimators: [200, 300, 400]
+      learning_rate: [0.01, 0.05, 0.1]
+      max_depth: [3, 5, 7]
+
+train:
+  test_size: 0.2
+  random_state: 42
+  cv_folds: 5  # Количество фолдов для кросс-валидации

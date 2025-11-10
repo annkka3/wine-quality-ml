@@ -1,0 +1,104 @@
+stages:
+  - lint
+  - dvc
+  - test
+  - build
+  - deploy
+
+image: python:3.11
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: "/certs"
+  # GitLab Container Registry
+  CI_REGISTRY_IMAGE: $CI_REGISTRY_IMAGE
+  IMAGE_TAG: $CI_COMMIT_REF_SLUG
+
+before_script:
+  - python -m pip install --upgrade pip
+  - python -m pip install -r requirements.txt
+  - python -m pip install "dvc[ssh]"
+  - dvc pull || echo "Nothing to pull yet"
+
+lint:
+  stage: lint
+  script:
+    - python -m pip install flake8
+    - flake8 src tests
+
+dvc_check:
+  stage: dvc
+  script:
+    - test -f data/winequality-red.csv || (echo "Data missing" && exit 1)
+    - test -f models/model_best.pkl || (echo "Model missing" && exit 1)
+    - test -f models/model_metadata.json || echo "Warning: Model metadata not found (optional)"
+
+tests:
+  stage: test
+  script:
+    - python -m pip install pytest
+    - pytest -q
+
+# Docker build stage
+build:docker:
+  stage: build
+  image: docker:24
+  services:
+    - docker:24-dind
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    - |
+      docker build \
+        --tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA \
+        --tag $CI_REGISTRY_IMAGE:$IMAGE_TAG \
+        --tag $CI_REGISTRY_IMAGE:latest \
+        .
+    - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
+    - docker push $CI_REGISTRY_IMAGE:$IMAGE_TAG
+    - docker push $CI_REGISTRY_IMAGE:latest
+  only:
+    - main
+    - master
+    - develop
+  tags:
+    - docker
+
+# Deploy stage (пример для деплоя - можно настроить под вашу инфраструктуру)
+deploy:staging:
+  stage: deploy
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache curl
+  script:
+    - echo "Deploying to staging environment..."
+    - echo "Image: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA"
+    # Здесь можно добавить команды для деплоя:
+    # - kubectl set image deployment/wine-quality-api api=$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
+    # - или docker-compose pull && docker-compose up -d
+    - echo "Deployment completed (placeholder)"
+  environment:
+    name: staging
+    url: https://staging.example.com
+  only:
+    - develop
+  when: manual
+
+deploy:production:
+  stage: deploy
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache curl
+  script:
+    - echo "Deploying to production environment..."
+    - echo "Image: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA"
+    # Здесь можно добавить команды для деплоя в production
+    - echo "Deployment completed (placeholder)"
+  environment:
+    name: production
+    url: https://api.example.com
+  only:
+    - main
+    - master
+  when: manual
